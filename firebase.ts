@@ -6,12 +6,13 @@ import { getStorage } from "firebase/storage";
 // TODO: Replace with your actual Firebase project configuration
 // You can get this from the Firebase Console -> Project Settings -> General
 const firebaseConfig = {
-  apiKey: "API_KEY_PLACEHOLDER",
-  authDomain: "PROJECT_ID.firebaseapp.com",
-  projectId: "PROJECT_ID",
-  storageBucket: "PROJECT_ID.appspot.com",
-  messagingSenderId: "SENDER_ID",
-  appId: "APP_ID"
+  apiKey: "AIzaSyBra9Kn2mpVMbvBBjWft8wM9LdVnsKzADs",
+  authDomain: "mpgo-65912.firebaseapp.com",
+  projectId: "mpgo-65912",
+  storageBucket: "mpgo-65912.firebasestorage.app",
+  messagingSenderId: "990141924286",
+  appId: "1:990141924286:web:b43d6c59be104e3e2aefef",
+  measurementId: "G-40J1GPZM89"
 };
 
 // Initialize Firebase
