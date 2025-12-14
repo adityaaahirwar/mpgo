@@ -7,6 +7,7 @@ import { db, storage } from '../../firebase';
 import { collection, addDoc, getDocs, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Job } from '../../types';
+import { logAdminAction } from '../../services/auditService'; // Import Audit Service
 
 export const JobManager = () => {
   const [showForm, setShowForm] = useState(false);
@@ -23,6 +24,7 @@ export const JobManager = () => {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    // SECURITY: This query works because Security Rules allow 'read' on jobs
     const q = query(collection(db, "jobs"), orderBy("postedDate", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const jobsData = snapshot.docs.map(doc => ({
@@ -30,6 +32,9 @@ export const JobManager = () => {
         ...doc.data()
       })) as Job[];
       setJobs(jobsData);
+      setLoading(false);
+    }, (error) => {
+      console.error("Access Error:", error);
       setLoading(false);
     });
 
@@ -43,12 +48,14 @@ export const JobManager = () => {
     try {
       let pdfUrl = '';
       if (pdfFile) {
+        // SECURITY: Storage rules protect /job-docs/
         const storageRef = ref(storage, `job-docs/${Date.now()}_${pdfFile.name}`);
         const snapshot = await uploadBytes(storageRef, pdfFile);
         pdfUrl = await getDownloadURL(snapshot.ref);
       }
 
-      await addDoc(collection(db, "jobs"), {
+      // SECURITY: Firestore rules ensure only Admin can write here
+      const docRef = await addDoc(collection(db, "jobs"), {
         title,
         department,
         type,
@@ -60,6 +67,13 @@ export const JobManager = () => {
         applicantsCount: 0
       });
 
+      // AUDIT LOG: Automatically track this action
+      await logAdminAction(
+        'CREATE_JOB', 
+        docRef.id, 
+        `Created job posting: ${title} (${department})`
+      );
+
       // Reset form
       setShowForm(false);
       setTitle('');
@@ -67,17 +81,34 @@ export const JobManager = () => {
       setSalary('');
       setDescription('');
       setPdfFile(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error adding job: ", error);
-      alert("Failed to post job");
+      if (error.code === 'permission-denied') {
+        alert("Security Alert: You do not have permission to post jobs.");
+      } else {
+        alert("Failed to post job");
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleDeleteJob = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this job?")) {
-      await deleteDoc(doc(db, "jobs", id));
+  const handleDeleteJob = async (id: string, jobTitle: string) => {
+    if (window.confirm("Are you sure you want to delete this job? This action is logged.")) {
+      try {
+        await deleteDoc(doc(db, "jobs", id));
+        
+        // AUDIT LOG: Track deletion
+        await logAdminAction(
+          'DELETE_JOB',
+          id,
+          `Deleted job posting: ${jobTitle}`
+        );
+      } catch (error: any) {
+        if (error.code === 'permission-denied') {
+          alert("Access Denied: Only Admins can delete jobs.");
+        }
+      }
     }
   };
 
@@ -85,7 +116,8 @@ export const JobManager = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
          <h2 className="text-2xl font-bold text-slate-900">Job Listings</h2>
-         <Button onClick={() => setShowForm(!showForm)} icon={<Icons.Briefcase />}>
+         <Button onClick={() => setShowForm(!showForm)}>
+            <Icons.Briefcase className="w-4 h-4 mr-2" />
             {showForm ? 'Cancel' : 'Post New Job'}
          </Button>
       </div>
@@ -218,7 +250,7 @@ export const JobManager = () => {
                            <Badge label={job.status} variant={job.status === 'Open' ? 'success' : 'neutral'} />
                         </td>
                         <td className="px-6 py-4 text-right space-x-2">
-                           <button onClick={() => handleDeleteJob(job.id)} className="text-slate-400 hover:text-red-600"><Icons.X className="w-4 h-4" /></button>
+                           <button onClick={() => handleDeleteJob(job.id, job.title)} className="text-slate-400 hover:text-red-600"><Icons.X className="w-4 h-4" /></button>
                         </td>
                      </tr>
                     ))

@@ -30,19 +30,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       if (currentUser) {
         setUser(currentUser);
-        // Fetch role from Firestore
+        
+        // SECURITY: Always fetch role from Firestore (source of truth).
+        // Do not rely on local storage or client-side caching for roles.
         try {
           const userDoc = await getDoc(doc(db, "users", currentUser.uid));
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            setRole(userData.role as UserRole);
+            // Validate that the role is valid before setting state
+            const fetchedRole = userData.role;
+            if (fetchedRole === 'admin' || fetchedRole === 'user') {
+              setRole(fetchedRole);
+            } else {
+               setRole('user'); // Default safe fallback
+            }
           } else {
-            // Fallback if doc doesn't exist (shouldn't happen with correct signup flow)
+            // User authenticated but no DB record? Likely sync issue or new user.
             setRole('user');
           }
         } catch (error) {
-          console.error("Error fetching user role:", error);
-          setRole('guest');
+          console.error("Security Error: Failed to verify user role:", error);
+          // If role check fails, default to guest or user (least privilege)
+          setRole('guest'); 
         }
       } else {
         setUser(null);

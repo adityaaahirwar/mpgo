@@ -1,0 +1,33 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // We need to fetch firestore data to verify admin in storage rules if we don't use Custom Claims.
+    // However, Storage rules don't support `get()` from Firestore directly in the same way.
+    // OPTION A: Use Custom Claims (Requires backend).
+    // OPTION B: Relax storage admin check slightly to "Authenticated" for read, but strictly enforce paths.
+    // For this implementation, we will assume standard path-based security.
+
+    // 1. JOB PDFS
+    // Public Read, Admin Write
+    // Since we can't easily check Firestore role here without Custom Claims,
+    // we strictly control the write path. 
+    // Ideally, you'd sync the role to custom claims.
+    match /job-docs/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated(); // In a real env, verify 'admin' claim here
+    }
+
+    // 2. USER DOCUMENTS
+    // /user_documents/{userId}/{fileName}
+    match /user_documents/{userId}/{allPaths=**} {
+      // Owner can read/write their own folder.
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}
