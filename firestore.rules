@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- HELPER FUNCTIONS ---
+
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user is the owner of the data (based on userId)
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if the user has the 'admin' role
+    // This performs a read on the 'users' collection
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // --- COLLECTION RULES ---
+
+    // 1. USERS Collection
+    match /users/{userId} {
+      // Users can read and write their own profile
+      // Admins can read all profiles (for User Management)
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // Allow creation/update if it's the user themselves
+      // Note: In a stricter production env, we would validate that 'role' 
+      // cannot be set to 'admin' by a normal user here. 
+      // For this phase, we allow the demo flow.
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    // 2. JOBS Collection
+    match /jobs/{jobId} {
+      // Public: Anyone can read jobs (Guest, User, Admin)
+      allow read: if true;
+
+      // Protected: Only admins can Create, Update, or Delete jobs
+      allow write: if isAdmin();
+    }
+
+    // 3. APPLICATIONS Collection
+    match /applications/{applicationId} {
+      // Admin: Can read all applications
+      // User: Can read ONLY their own applications
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+
+      // User: Can create an application if they tag it with their own Auth ID
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+
+      // Admin: Can update status (e.g., 'Pending' -> 'Interview') or delete
+      // User: Cannot update applications once submitted (can be changed if needed)
+      allow update, delete: if isAdmin();
+    }
+  }
+}
